@@ -29,6 +29,47 @@ resource "aws_route53_record" "example" {
 }
 ```
 
+## Example Usage with label selector
+
+```hcl
+data "kubernetes_service_v1" "example" {
+  metadata {
+    labels = {
+      app = "example"
+    } 
+  }
+}
+
+resource "aws_route53_record" "example" {
+  zone_id = "data.aws_route53_zone.k8.zone_id"
+  name    = "example"
+  type    = "CNAME"
+  ttl     = "300"
+  records = [data.kubernetes_service_v1.example.status.0.load_balancer.0.ingress.0.hostname]
+}
+```
+
+## Example Usage with label selector in all namespaces
+
+```hcl
+data "kubernetes_service_v1" "example" {
+  metadata {
+    namespaces = ""
+    labels = {
+      app = "example"
+    } 
+  }
+}
+
+resource "aws_route53_record" "example" {
+  zone_id = "data.aws_route53_zone.k8.zone_id"
+  name    = "example"
+  type    = "CNAME"
+  ttl     = "300"
+  records = [data.kubernetes_service_v1.example.status.0.load_balancer.0.ingress.0.hostname]
+}
+```
+
 ## Argument Reference
 
 The following arguments are supported:
@@ -45,8 +86,9 @@ The following arguments are supported:
 
 #### Arguments
 
-* `name` - Name of the service, must be unique. Cannot be updated. For more info see [Kubernetes reference](https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names)
-* `namespace` - (Optional) Namespace defines the space within which name of the service must be unique.
+* `name` - (Conflict with labels) Name of the service, must be unique. Cannot be updated. For more info see [Kubernetes reference](https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names)
+* `namespace` - (Optional) Namespace defines the space within which name of the service must be unique. Default value is `default`. For more info see [Kubernetes reference](https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/)
+* `labels` - (Conflict with labels) Map of string keys and values that can be used to organize and categorize (scope and select) the service. May match selectors of replication controllers and services. For more info see [Kubernetes reference](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/)
 
 #### Attributes
 

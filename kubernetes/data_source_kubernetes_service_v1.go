@@ -5,6 +5,7 @@ package kubernetes
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 func dataSourceKubernetesServiceV1() *schema.Resource {
@@ -252,10 +254,40 @@ func dataSourceKubernetesServiceV1Read(ctx context.Context, d *schema.ResourceDa
 		Namespace: metadata.Namespace,
 		Name:      metadata.Name,
 	}
+
+	svc := &corev1.Service{}
+	svcList := &corev1.ServiceList{}
+
+	if metadata.Name != "" && metadata.Labels != nil {
+		return diag.FromErr(fmt.Errorf("cannot specify both service name and label selector"))
+	}
+
+	if metadata.Name != "" {
+		log.Printf("[INFO] Reading service with name: %s", metadata.Name)
+		svc, err = conn.CoreV1().Services(metadata.Namespace).Get(ctx, metadata.Name, metav1.GetOptions{})
+	} else if metadata.Labels != nil {
+		log.Printf("[INFO] Select service using labels: %#v", metadata.Labels)
+		svcLabels := metadata.GetLabels()
+		svcList, err = conn.CoreV1().Services(metadata.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.SelectorFromSet(svcLabels).String()})
+		if len(svcList.Items) > 1 {
+			return diag.FromErr(fmt.Errorf("multiple services found with labels %v in %s namespace", metadata.Labels, metadata.Namespace))
+		} else if len(svcList.Items) == 0 {
+			return diag.FromErr(fmt.Errorf("no services found with labels %v in %s namespace", metadata.Labels, metadata.Namespace))
+		}
+		for _, service := range svcList.Items {
+			svc = &service
+			om.Name = svc.Name
+		}
+	} else {
+		return diag.FromErr(fmt.Errorf("either service name or label selector must be provided"))
+	}
+
+	if metadata.Namespace == "" {
+		om.Namespace = svc.Namespace
+	}
+
 	d.SetId(buildId(om))
 
-	log.Printf("[INFO] Reading service %s", metadata.Name)
-	svc, err := conn.CoreV1().Services(metadata.Namespace).Get(ctx, metadata.Name, metav1.GetOptions{})
 	if err != nil {
 		log.Printf("[DEBUG] Received error: %#v", err)
 		return diag.FromErr(err)
